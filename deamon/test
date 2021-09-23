@@ -1,0 +1,8 @@
+#!/bin/bash
+
+nbr=1
+
+while true
+do
+	nbr=1
+done

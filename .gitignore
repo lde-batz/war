@@ -1,0 +1,9 @@
+.DS_Store
+*/objects
+*.o
+pestilence
+libft/obj/
+libft/libft.a
+.gdb_history
+peda-session-pestilence.txt
+

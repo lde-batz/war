@@ -1,0 +1,10 @@
+run the process "test" in the background
+$ ./deamon/test &
+
+check if the process is running
+$ pgrep test
+
+kill the process
+$ fg -> ctrl+C
+or
+$ kill $pid
