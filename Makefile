@@ -1,5 +1,5 @@
 
-NAME = war
+NAME = pestilence
 
 SRC +=	war.s
 SRC +=	header.s

